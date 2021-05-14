@@ -14,37 +14,44 @@
  * limitations under the License.
  */
 
-package handlers
+package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
-	"github.com/netflix/weep/cache"
-	log "github.com/sirupsen/logrus"
+	"github.com/netflix/weep/util"
 
-	"github.com/netflix/weep/metadata"
+	"github.com/netflix/weep/cache"
 )
 
 func RoleHandler(w http.ResponseWriter, r *http.Request) {
-	// I think this works as long as there's a response?
-	fmt.Fprint(w, "hi")
+	defaultRole, err := cache.GlobalCache.GetDefault()
+	if err != nil {
+		util.WriteError(w, "error", 500)
+		return
+	}
+	if _, err := w.Write([]byte(fmt.Sprintf("%s\n", defaultRole.RoleName))); err != nil {
+		log.Errorf("failed to write response: %v", err)
+	}
 }
 
-func CredentialsHandler(w http.ResponseWriter, r *http.Request) {
-
+func IMDSHandler(w http.ResponseWriter, r *http.Request) {
 	c, err := cache.GlobalCache.GetDefault()
 	if err != nil {
 		log.Errorf("could not get credentials from cache: %e", err)
+		util.WriteError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	credentials, err := c.Retrieve()
 	if err != nil {
 		log.Errorf("could not get credentials: %e", err)
+		util.WriteError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	credentialResponse := metadata.MetaDataCredentialResponse{
+	credentialResponse := MetaDataCredentialResponse{
 		Code:            "Success",
 		LastUpdated:     c.LastRefreshed.UTC().Format("2006-01-02T15:04:05Z"),
 		Type:            "AWS-HMAC",
@@ -54,11 +61,8 @@ func CredentialsHandler(w http.ResponseWriter, r *http.Request) {
 		Expiration:      c.Expiration.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 
-	b, err := json.Marshal(credentialResponse)
+	err = json.NewEncoder(w).Encode(credentialResponse)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("failed to write response: %v", err)
 	}
-	var out bytes.Buffer
-	json.Indent(&out, b, "", "  ")
-	fmt.Fprintln(w, out.String())
 }

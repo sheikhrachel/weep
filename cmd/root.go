@@ -17,17 +17,15 @@
 package cmd
 
 import (
-	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
+	"github.com/netflix/weep/metadata"
+
 	"github.com/netflix/weep/config"
+	"github.com/netflix/weep/logging"
 
-	"github.com/kardianos/service"
-
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -38,28 +36,43 @@ var (
 		Short:             "weep helps you get the most out of ConsoleMe credentials",
 		Long:              "Weep is a CLI tool that manages AWS access via ConsoleMe for local development.",
 		DisableAutoGenTag: true,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// This runs before any subcommand, and cmd.CalledAs() returns the subcommand
+			// that was called. We want to use this for the weep method in the instance info.
+			metadata.SetWeepMethod(cmd.CalledAs())
+		},
 	}
+	log = logging.GetLogger()
 )
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	cobra.OnInitialize(initLogging)
+	cobra.OnInitialize(updateLoggingConfig)
 
+	rootCmd.PersistentFlags().BoolVarP(&noIpRestrict, "no-ip", "n", false, "remove IP restrictions")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.weep.yaml)")
 	rootCmd.PersistentFlags().StringSliceVarP(&assumeRole, "assume-role", "A", make([]string, 0), "one or more roles to assume after retrieving credentials")
 	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "", "log format (json or tty)")
 	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", viper.GetString("log_file"), "log file path")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "log level (debug, info, warn)")
+	rootCmd.PersistentFlags().StringVarP(&region, "region", "r", viper.GetString("aws.region"), "AWS region")
 }
 
-func Execute() {
+func Run(initFunctions ...func()) {
+	cobra.OnInitialize(initFunctions...)
+	Execute()
+}
+
+func Execute() error {
 	shutdown = make(chan os.Signal, 1)
 	done = make(chan int, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 
 	if err := rootCmd.Execute(); err != nil {
-		rootCmd.PrintErr(err)
+		// err is already printed out by cobra's Execute
+		return err
 	}
+	return nil
 }
 
 func initConfig() {
@@ -68,48 +81,10 @@ func initConfig() {
 	}
 }
 
-func initLogging() {
-	// Set the log level and default to INFO
-	switch logLevel {
-	case "error":
-		log.SetLevel(log.ErrorLevel)
-	case "warn":
-		log.SetLevel(log.WarnLevel)
-	case "debug":
-		log.SetLevel(log.DebugLevel)
-	default:
-		log.SetLevel(log.InfoLevel)
-	}
-
-	log.Debug("configuring logging")
-
-	// Set the log format.  Default to Text
-	if logFormat == "json" {
-		log.SetFormatter(&log.JSONFormatter{})
-	} else {
-		log.SetFormatter(&log.TextFormatter{})
-	}
-
-	logDir := filepath.Dir(logFile)
-	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		log.Debugf("attempting to create log directory %s", logDir)
-		err := os.MkdirAll(logDir, os.ModePerm)
-		if err != nil {
-			log.Errorf("could not create log directory")
-		}
-	}
-
-	var w io.Writer
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+// updateLoggingConfig overrides the default logging settings based on the config and CLI args
+func updateLoggingConfig() {
+	err := logging.UpdateConfig(logLevel, logFormat, logFile)
 	if err != nil {
-		log.Errorf("could not open %s for logging, defaulting to stderr: %v", logFile, err)
-		log.SetOutput(os.Stderr)
-		w = os.Stderr
-	} else if service.Interactive() {
-		w = io.MultiWriter(os.Stderr, file)
-	} else {
-		w = file
+		log.Errorf("failed to configure logger: %v", err)
 	}
-	log.SetOutput(w)
-	log.Debug("logging configured")
 }

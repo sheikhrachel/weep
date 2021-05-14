@@ -17,14 +17,19 @@
 package util
 
 import (
-	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/netflix/weep/errors"
+	"github.com/netflix/weep/logging"
 )
+
+var log = logging.GetLogger()
 
 type AwsArn struct {
 	Arn               string
@@ -38,12 +43,13 @@ type AwsArn struct {
 }
 
 type ErrorResponse struct {
-	Error string
+	Message string `json:"message"`
+	Code    string `json:"code"`
 }
 
 func validate(arn string, pieces []string) error {
 	if len(pieces) < 6 {
-		return fmt.Errorf("malformed ARN: %s", arn)
+		return errors.InvalidArn
 	}
 	return nil
 }
@@ -89,21 +95,59 @@ func FileExists(path string) bool {
 	return err == nil
 }
 
-// WriteError writes a status code and JSON-formatted error to the provided http.ResponseWriter.
-func WriteError(w http.ResponseWriter, status int, message string) {
+// WriteError writes a status code and plaintext error to the provided http.ResponseWriter.
+// The error is written as plaintext so AWS SDKs will display it inline with an error message.
+func WriteError(w http.ResponseWriter, message string, status int) {
 	log.Debugf("writing HTTP error response: %s", message)
-	resp := ErrorResponse{Error: message}
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		log.Errorf("could not marshal error response: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 	w.WriteHeader(status)
-	_, err = w.Write(respBytes)
+	_, err := w.Write([]byte(message))
 	if err != nil {
 		log.Errorf("could not write error response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
+}
+
+// Attempt to open a link in browser, if supported
+func OpenLink(link string) error {
+	var openUrlCommand []string = nil
+	switch runtime.GOOS {
+	case "darwin":
+		openUrlCommand = []string{"open"}
+	case "linux":
+		if isWSL() {
+			openUrlCommand = []string{"cmd.exe", "/C", "start"}
+		} else {
+			openUrlCommand = []string{"xdg-open"}
+		}
+	case "windows":
+		// This is unsupported until we find a safer way to run the open command in Windows.
+		return errors.BrowserOpenError
+	}
+
+	if openUrlCommand != nil {
+		cmd := exec.Command(openUrlCommand[0], append(openUrlCommand[1:], link)...)
+		err := cmd.Start()
+		if err == nil {
+			err = cmd.Wait()
+		}
+		if err != nil {
+			return err
+		} else {
+			log.Infoln("Link opened in a new browser window.")
+		}
+	} else {
+		return errors.BrowserOpenError
+	}
+	return nil
+}
+
+func isWSL() bool {
+	if FileExists("/proc/sys/kernel/osrelease") {
+		if osrelease, err := ioutil.ReadFile("/proc/sys/kernel/osrelease"); err == nil {
+			if strings.Contains(strings.ToLower(string(osrelease)), "microsoft") {
+				return true
+			}
+		}
+	}
+	return false
 }

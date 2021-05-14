@@ -25,31 +25,24 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/netflix/weep/creds"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	CredentialProcessCmd.PersistentFlags().BoolVarP(&noIpRestrict, "no-ip", "n", false, "remove IP restrictions")
-	GenerateCredentialProcessCmd.PersistentFlags().StringVarP(&destinationConfig, "output", "o", getDefaultAwsConfigFile(), "output file for AWS config")
+	CredentialProcessCmd.PersistentFlags().BoolVarP(&generate, "generate", "g", false, "generate ~/.aws/config with credential process config")
+	CredentialProcessCmd.PersistentFlags().StringVarP(&destinationConfig, "output", "o", getDefaultAwsConfigFile(), "output file for AWS config")
 	rootCmd.AddCommand(CredentialProcessCmd)
-	rootCmd.AddCommand(GenerateCredentialProcessCmd)
-}
-
-var GenerateCredentialProcessCmd = &cobra.Command{
-	Use:   "generate_credential_process_config",
-	Short: "Write all of your eligible roles as profiles in your AWS Config to source credentials from Weep",
-	RunE:  runGenerateCredentialProcessConfig,
 }
 
 var CredentialProcessCmd = &cobra.Command{
 	Use:   "credential_process [role_name]",
-	Short: "Retrieve credentials and writes them in credential_process format",
-	Args:  cobra.ExactArgs(1),
+	Short: credentialProcessShortHelp,
+	Long:  credentialProcessLongHelp,
+	Args:  cobra.MaximumNArgs(1),
 	RunE:  runCredentialProcess,
 }
 
-func writeConfigFile(roles []string) error {
+func writeConfigFile(roles []string, destination string) error {
 	var configINI *ini.File
 	var err error
 
@@ -79,8 +72,11 @@ func writeConfigFile(roles []string) error {
 	return nil
 }
 
-func runGenerateCredentialProcessConfig(cmd *cobra.Command, args []string) error {
-	client, err := creds.GetClient()
+func generateCredentialProcessConfig(destination string) error {
+	if destination == "" {
+		return fmt.Errorf("no destination provided")
+	}
+	client, err := creds.GetClient(region)
 	if err != nil {
 		return err
 	}
@@ -88,7 +84,7 @@ func runGenerateCredentialProcessConfig(cmd *cobra.Command, args []string) error
 	if err != nil {
 		return err
 	}
-	err = writeConfigFile(roles)
+	err = writeConfigFile(roles, destination)
 	if err != nil {
 		return err
 	}
@@ -96,8 +92,11 @@ func runGenerateCredentialProcessConfig(cmd *cobra.Command, args []string) error
 }
 
 func runCredentialProcess(cmd *cobra.Command, args []string) error {
-	role = args[0]
-	credentials, err := creds.GetCredentials(role, noIpRestrict, assumeRole)
+	if generate {
+		return generateCredentialProcessConfig(destination)
+	}
+	role := args[0]
+	credentials, err := creds.GetCredentials(role, noIpRestrict, assumeRole, "")
 	if err != nil {
 		return err
 	}

@@ -44,44 +44,44 @@ func TestCredentialCache_Get(t *testing.T) {
 		{
 			Description: "role in cache",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a": {Role: "a"},
+				"a": {RoleName: "a"},
 			},
 			Role:           "a",
 			AssumeChain:    []string{},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a"},
 		},
 		{
 			Description: "role in cache with assume",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a":     {Role: "a"},
-				"a/b/c": {Role: "a/b/c"},
+				"a":     {RoleName: "a"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
 			Role:           "a",
 			AssumeChain:    []string{},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a"},
 		},
 		{
 			Description: "assume role in cache",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a/b/c": {Role: "a/b/c"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
 			Role:           "a",
 			AssumeChain:    []string{"b", "c"},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a/b/c"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a/b/c"},
 		},
 		{
 			Description: "assume role in cache with non-assume",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a":     {Role: "a"},
-				"a/b/c": {Role: "a/b/c"},
+				"a":     {RoleName: "a"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
 			Role:           "a",
 			AssumeChain:    []string{"b", "c"},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a/b/c"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a/b/c"},
 		},
 	}
 
@@ -95,7 +95,7 @@ func TestCredentialCache_Get(t *testing.T) {
 			t.Errorf("%s failed: expected %v error, got %v", tc.Description, tc.ExpectedError, actualError)
 			continue
 		}
-		if actualResult != nil && actualResult.Role != tc.ExpectedResult.Role {
+		if actualResult != nil && actualResult.RoleArn != tc.ExpectedResult.RoleArn {
 			t.Errorf("%s failed: expected %v result, got %v", tc.Description, tc.ExpectedResult, actualResult)
 		}
 	}
@@ -120,16 +120,16 @@ func TestCredentialCache_GetDefault(t *testing.T) {
 			Description: "default role in cache",
 			DefaultRole: "a",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a": {Role: "a"},
+				"a": {RoleName: "a"},
 			},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a"},
 		},
 		{
 			Description: "no default role set",
 			DefaultRole: "",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a": {Role: "a"},
+				"a": {RoleName: "a"},
 			},
 			ExpectedError:  errors.NoDefaultRoleSet,
 			ExpectedResult: nil,
@@ -138,30 +138,30 @@ func TestCredentialCache_GetDefault(t *testing.T) {
 			Description: "default role in cache with assume",
 			DefaultRole: "a",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a":     {Role: "a"},
-				"a/b/c": {Role: "a/b/c"},
+				"a":     {RoleName: "a"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a"},
 		},
 		{
 			Description: "default assume role in cache",
 			DefaultRole: "a/b/c",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a/b/c": {Role: "a/b/c"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a/b/c"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a/b/c"},
 		},
 		{
 			Description: "default assume role in cache with non-assume",
 			DefaultRole: "a/b/c",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a":     {Role: "a"},
-				"a/b/c": {Role: "a/b/c"},
+				"a":     {RoleName: "a"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a/b/c"},
+			ExpectedResult: &creds.RefreshableProvider{RoleName: "a/b/c"},
 		},
 	}
 
@@ -176,7 +176,7 @@ func TestCredentialCache_GetDefault(t *testing.T) {
 			t.Errorf("%s failed: expected %v error, got %v", tc.Description, tc.ExpectedError, actualError)
 			continue
 		}
-		if actualResult != nil && actualResult.Role != tc.ExpectedResult.Role {
+		if actualResult != nil && actualResult.RoleArn != tc.ExpectedResult.RoleArn {
 			t.Errorf("%s failed: expected %v result, got %v", tc.Description, tc.ExpectedResult, actualResult)
 		}
 	}
@@ -212,11 +212,91 @@ func TestCredentialCache_SetDefault(t *testing.T) {
 	}
 }
 
+func TestCredentialCache_DefaultLastUpdated(t *testing.T) {
+	testCache := CredentialCache{
+		RoleCredentials: map[string]*creds.RefreshableProvider{},
+	}
+	testClient, err := creds.GetTestClient(creds.ConsolemeCredentialResponseType{
+		Credentials: &creds.AwsCredentials{
+			AccessKeyId:     "a",
+			SecretAccessKey: "b",
+			SessionToken:    "c",
+			Expiration:      creds.Time(time.Unix(1, 0)),
+			RoleArn:         "e",
+		},
+	})
+	if err != nil {
+		t.Errorf("test setup failure: %e", err)
+	}
+	err = testCache.SetDefault(testClient, "a", "b", make([]string, 0))
+	if err != nil {
+		t.Errorf("test failure: %e", err)
+	}
+	timeFormat := "2006-01-02T15:04:05Z"
+	result := testCache.DefaultLastUpdated()
+	resultTime, err := time.Parse(timeFormat, result)
+	if err != nil {
+		t.Errorf("invalid time format returned: expected format %s, got result %s", timeFormat, result)
+	}
+	now := time.Now().Format(timeFormat)
+	timeDiff := time.Now().Sub(resultTime)
+	if timeDiff < 0*time.Second || timeDiff > 1*time.Second {
+		t.Errorf("last refreshed time more than 1 second different than current time: %s, current time %s, difference %v seconds", result, now, timeDiff)
+	}
+}
+
+func TestCredentialCache_DefaultLastUpdated_NoDefault(t *testing.T) {
+	testCache := CredentialCache{
+		RoleCredentials: map[string]*creds.RefreshableProvider{},
+	}
+	result := testCache.DefaultLastUpdated()
+	if result != "" {
+		t.Errorf("wrong last updated returned: got %s, expected empty string", result)
+	}
+}
+
+func TestCredentialCache_DefaultArn(t *testing.T) {
+	testCache := CredentialCache{
+		RoleCredentials: map[string]*creds.RefreshableProvider{},
+	}
+	testClient, err := creds.GetTestClient(creds.ConsolemeCredentialResponseType{
+		Credentials: &creds.AwsCredentials{
+			AccessKeyId:     "a",
+			SecretAccessKey: "b",
+			SessionToken:    "c",
+			Expiration:      creds.Time(time.Unix(1, 0)),
+			RoleArn:         "e",
+		},
+	})
+	if err != nil {
+		t.Errorf("test setup failure: %e", err)
+	}
+	err = testCache.SetDefault(testClient, "a", "b", make([]string, 0))
+	if err != nil {
+		t.Errorf("test failure: %e", err)
+	}
+	expected := "e"
+	result := testCache.DefaultArn()
+	if result != expected {
+		t.Errorf("wrong arn returned: got %s, expected %s", result, expected)
+	}
+}
+
+func TestCredentialCache_DefaultArn_NoDefault(t *testing.T) {
+	testCache := CredentialCache{
+		RoleCredentials: map[string]*creds.RefreshableProvider{},
+	}
+	result := testCache.DefaultArn()
+	if result != "" {
+		t.Errorf("wrong arn returned: got %s, expected empty string", result)
+	}
+}
+
 func TestCredentialCache_GetOrSet(t *testing.T) {
 	cases := []struct {
 		CacheContents  map[string]*creds.RefreshableProvider
 		ClientResponse interface{}
-		Role           string
+		SearchString   string
 		AssumeChain    []string
 		Region         string
 		Description    string
@@ -226,30 +306,30 @@ func TestCredentialCache_GetOrSet(t *testing.T) {
 		{
 			Description:    "role not in cache",
 			CacheContents:  make(map[string]*creds.RefreshableProvider),
-			Role:           "a",
+			SearchString:   "a",
 			AssumeChain:    []string{},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleArn: "arn:aws:iam::012345678901:role/coolRole1"},
 		},
 		{
 			Description: "role not in cache with assume",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a/b/c": {Role: "a/b/c"},
+				"a/b/c": {RoleName: "a/b/c"},
 			},
-			Role:           "a",
+			SearchString:   "a",
 			AssumeChain:    []string{},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleArn: "arn:aws:iam::012345678901:role/coolRole2"},
 		},
 		{
 			Description: "role already in cache",
 			CacheContents: map[string]*creds.RefreshableProvider{
-				"a": {Role: "a"},
+				"a": {RoleArn: "arn:aws:iam::012345678901:role/coolRole3"},
 			},
-			Role:           "a",
+			SearchString:   "a",
 			AssumeChain:    []string{},
 			ExpectedError:  nil,
-			ExpectedResult: &creds.RefreshableProvider{Role: "a"},
+			ExpectedResult: &creds.RefreshableProvider{RoleArn: "arn:aws:iam::012345678901:role/coolRole3"},
 		},
 	}
 
@@ -264,14 +344,14 @@ func TestCredentialCache_GetOrSet(t *testing.T) {
 				SecretAccessKey: "b",
 				SessionToken:    "c",
 				Expiration:      creds.Time(time.Unix(1, 0)),
-				RoleArn:         "e",
+				RoleArn:         tc.ExpectedResult.RoleArn,
 			},
 		})
 		if err != nil {
 			t.Errorf("test setup failure: %e", err)
 			continue
 		}
-		result, actualError := testCache.GetOrSet(client, tc.Role, tc.Region, tc.AssumeChain)
+		result, actualError := testCache.GetOrSet(client, tc.SearchString, tc.Region, tc.AssumeChain)
 		if actualError != tc.ExpectedError {
 			t.Errorf("%s failed: expected %v error, got %v", tc.Description, tc.ExpectedError, actualError)
 			continue
@@ -280,8 +360,8 @@ func TestCredentialCache_GetOrSet(t *testing.T) {
 			t.Errorf("%s failed: got nil result, expected %v", tc.Description, tc.ExpectedResult)
 			continue
 		}
-		if result != nil && result.Role != tc.ExpectedResult.Role {
-			t.Errorf("%s failed: expected role %v, got %v", tc.Description, tc.ExpectedResult.Role, result.Role)
+		if result != nil && result.RoleArn != tc.ExpectedResult.RoleArn {
+			t.Errorf("%s failed: expected role %v, got %v", tc.Description, tc.ExpectedResult.RoleArn, result.RoleArn)
 			continue
 		}
 	}

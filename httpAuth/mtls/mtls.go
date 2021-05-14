@@ -23,6 +23,8 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/netflix/weep/logging"
+
 	"github.com/spf13/viper"
 
 	"path/filepath"
@@ -32,11 +34,27 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/netflix/weep/config"
 	"github.com/netflix/weep/util"
-	log "github.com/sirupsen/logrus"
 )
+
+var log = logging.GetLogger()
+
+var tlsConfig *tls.Config
+
+func init() {
+	if config.MtlsEnabled() {
+		var err error
+		tlsConfig, err = getTLSConfig()
+		if err != nil {
+			log.Fatalf("could not initialize mtls: %v", err)
+		}
+	}
+}
 
 // getTLSConfig makes and returns a pointer to a tls.Config
 func getTLSConfig() (*tls.Config, error) {
+	if tlsConfig != nil {
+		return tlsConfig, nil
+	}
 	dirs, err := getTLSDirs()
 	if err != nil {
 		return nil, err
@@ -45,7 +63,7 @@ func getTLSConfig() (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig, err := makeTLSConfig(certFile, keyFile, caFile, insecure)
+	tlsConfig, err = makeTLSConfig(certFile, keyFile, caFile, insecure)
 	if err != nil {
 		return nil, err
 	}
@@ -61,15 +79,14 @@ func makeTLSConfig(certFile, keyFile, caFile string, insecure bool) (*tls.Config
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	wrappedCert, err := newWrappedCertificate(certFile, keyFile)
 	if err != nil {
 		return nil, err
 	}
-
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: insecure,
-		RootCAs:            caCertPool,
-		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify:   insecure,
+		RootCAs:              caCertPool,
+		GetClientCertificate: wrappedCert.getCertificate,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 			// Based on the golang verification code. See https://golang.org/src/crypto/tls/handshake_client.go
 			certs := make([]*x509.Certificate, len(rawCerts))

@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/netflix/weep/metadata"
+
 	"github.com/aws/aws-sdk-go/aws/credentials"
 )
 
@@ -33,15 +35,15 @@ type AwsCredentials struct {
 }
 
 type RefreshableProvider struct {
+	sync.RWMutex
 	value         credentials.Value
-	mu            sync.RWMutex
-	client        *Client
+	client        HTTPClient
 	retries       int
 	retryDelay    int
 	Expiration    Time
 	LastRefreshed Time
 	Region        string
-	Role          string
+	RoleName      string
 	RoleArn       string
 	NoIpRestrict  bool
 	AssumeChain   []string
@@ -60,8 +62,12 @@ type ConsolemeCredentialResponseType struct {
 }
 
 type ConsolemeCredentialRequestType struct {
-	RequestedRole   string `json:"requested_role"`
-	NoIpRestriciton bool   `json:"no_ip_restrictions"`
+	RequestedRole  string                 `json:"requested_role"`
+	NoIpRestricton bool                   `json:"no_ip_restrictions"`
+	Metadata       *metadata.InstanceInfo `json:"metadata,omitempty"`
+}
+
+type ConsoleMeCredentialRequestMetadata struct {
 }
 
 type ConsolemeCredentialErrorMessageType struct {
@@ -119,4 +125,24 @@ func (t Time) Time() time.Time {
 // String returns t as a formatted string
 func (t Time) String() string {
 	return t.Time().String()
+}
+
+type Credentials struct {
+	Role                string
+	NoIpRestrict        bool
+	metaDataCredentials *AwsCredentials
+	MetadataRegion      string
+	LastRenewal         Time
+	mu                  sync.Mutex
+}
+
+// ConsolemeWebResponse represents the response structure of ConsoleMe's model WebResponse
+type ConsolemeWebResponse struct {
+	Status      string            `json:"status"`
+	Reason      string            `json:"reason"`
+	RedirectURL string            `json:"redirect_url"`
+	StatusCode  int               `json:"status_code"`
+	Message     string            `json:"message"`
+	Errors      []string          `json:"errors"`
+	Data        map[string]string `json:"data"`
 }

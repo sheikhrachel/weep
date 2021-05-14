@@ -14,18 +14,14 @@
  * limitations under the License.
  */
 
-package handlers
+package server
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"runtime"
 
-	"github.com/netflix/weep/creds"
-
-	log "github.com/sirupsen/logrus"
-
+	"github.com/netflix/weep/cache"
 	"github.com/netflix/weep/metadata"
 	"github.com/netflix/weep/util"
 )
@@ -35,8 +31,8 @@ var (
 )
 
 func InstanceIdentityDocumentHandler(w http.ResponseWriter, r *http.Request) {
-
-	awsArn, err := util.ArnParse(metadata.Role)
+	rawArn := cache.GlobalCache.DefaultArn()
+	awsArn, err := util.ArnParse(rawArn)
 
 	if err != nil {
 		accountID = "123456789012"
@@ -44,7 +40,7 @@ func InstanceIdentityDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		accountID = awsArn.AccountId
 	}
 
-	identityDocument := metadata.MetaDataInstanceIdentityDocumentResponse{
+	identityDocument := MetaDataInstanceIdentityDocumentResponse{
 		DevpayProductCodes:      []string{},
 		MarkerplaceProductCodes: []string{},
 		PrivateIP:               "100.1.2.3",
@@ -56,18 +52,14 @@ func InstanceIdentityDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		KernelID:                "aki-fc8f11cc",
 		RamdiskID:               "",
 		AccountID:               accountID,
-		Architecture:            "x86_64",
+		Architecture:            runtime.GOARCH,
 		ImageID:                 "ami-12345",
-		PendingTime:             creds.Time(metadata.LastRenewal.UTC()), //.Format("2006-01-02T15:04:05Z"),
-		Region:                  metadata.MetadataRegion,
+		PendingTime:             metadata.StartupTime(),
+		Region:                  "", // TODO: set this based on config
 	}
 
-	b, err := json.Marshal(identityDocument)
+	err = json.NewEncoder(w).Encode(identityDocument)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("failed to write response: %v", err)
 	}
-
-	var out bytes.Buffer
-	json.Indent(&out, b, "", "  ")
-	fmt.Fprintln(w, out.String())
 }

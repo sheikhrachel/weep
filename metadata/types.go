@@ -16,60 +16,11 @@
 
 package metadata
 
-import (
-	"sync"
-
-	"github.com/netflix/weep/creds"
-)
-
-type Credentials struct {
-	Role                string
-	NoIpRestrict        bool
-	metaDataCredentials *creds.AwsCredentials
-	MetadataRegion      string
-	LastRenewal         creds.Time
-	mu                  sync.Mutex
-}
-
-type MetaDataCredentialResponse struct {
-	Code            string
-	LastUpdated     string
-	Type            string
-	AccessKeyId     string
-	SecretAccessKey string
-	Token           string
-	Expiration      string
-}
-
-type ECSMetaDataCredentialResponse struct {
-	AccessKeyId     string
-	SecretAccessKey string
-	Token           string
-	Expiration      string
-	RoleArn         string
-}
-
-type MetaDataIamInfoResponse struct {
-	Code               string `json:"Code"`
-	LastUpdated        string `json:"LastUpdated"`
-	InstanceProfileARN string `json:"InstanceProfileArn"`
-	InstanceProfileID  string `json:"InstanceProfileId"`
-}
-
-type MetaDataInstanceIdentityDocumentResponse struct {
-	DevpayProductCodes      []string   `json:"devpayProductCodes"`
-	MarkerplaceProductCodes []string   `json:"marketplaceProductCodes"`
-	PrivateIP               string     `json:"privateIp"`
-	Version                 string     `json:"version"`
-	InstanceID              string     `json:"instanceId"`
-	BillingProductCodes     []string   `json:"billingProducts"`
-	InstanceType            string     `json:"instanceType"`
-	AvailabilityZone        string     `json:"availabilityZone"`
-	KernelID                string     `json:"kernelId"`
-	RamdiskID               string     `json:"ramdiskId"`
-	AccountID               string     `json:"accountId"`
-	Architecture            string     `json:"architecture"`
-	ImageID                 string     `json:"imageId"`
-	PendingTime             creds.Time `json:"pendingTime"`
-	Region                  string     `json:"region"`
+type InstanceInfo struct {
+	Hostname              string `json:"hostname" yaml:"hostname"`
+	Username              string `json:"username" yaml:"username"`
+	CertAgeSeconds        int    `json:"cert_age_seconds,omitempty" yaml:"cert_age_seconds"`
+	CertFingerprintSHA256 string `json:"cert_fingerprint_sha256,omitempty" yaml:"cert_fingerprint_sha256"`
+	WeepVersion           string `json:"weep_version" yaml:"weep_version"`
+	WeepMethod            string `json:"weep_method" yaml:"weep_method"`
 }

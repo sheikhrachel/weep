@@ -19,6 +19,7 @@ package cmd
 import (
 	"fmt"
 	"path"
+	"strconv"
 	"time"
 
 	"gopkg.in/ini.v1"
@@ -26,12 +27,10 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/netflix/weep/creds"
 	"github.com/netflix/weep/util"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	fileCmd.PersistentFlags().BoolVarP(&noIpRestrict, "no-ip", "n", false, "remove IP restrictions")
 	fileCmd.PersistentFlags().StringVarP(&destination, "output", "o", getDefaultCredentialsFile(), "output file for credentials")
 	fileCmd.PersistentFlags().StringVarP(&profileName, "profile", "p", "default", "profile name")
 	fileCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "overwrite existing profile without prompting")
@@ -41,13 +40,14 @@ func init() {
 
 var fileCmd = &cobra.Command{
 	Use:   "file [role_name]",
-	Short: "Retrieve credentials and save them to a credentials file",
+	Short: fileShortHelp,
+	Long:  fileLongHelp,
 	Args:  cobra.ExactArgs(1),
 	RunE:  runFile,
 }
 
 func runFile(cmd *cobra.Command, args []string) error {
-	role = args[0]
+	role := args[0]
 	err := updateCredentialsFile(role, profileName, destination, noIpRestrict, assumeRole)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func runFile(cmd *cobra.Command, args []string) error {
 }
 
 func updateCredentialsFile(role, profile, filename string, noIpRestrict bool, assumeRole []string) error {
-	credentials, err := creds.GetCredentials(role, noIpRestrict, assumeRole)
+	credentials, err := creds.GetCredentials(role, noIpRestrict, assumeRole, "")
 	if err != nil {
 		return err
 	}
@@ -136,10 +136,11 @@ func isExpiring(filename, profile string, thresholdMinutes int) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	expirationTime, err := expiration.Time()
+	expirationInt, err := expiration.Int64()
 	if err != nil {
 		return true, err
 	}
+	expirationTime := time.Unix(expirationInt, 0)
 	diff := time.Duration(thresholdMinutes) * time.Minute
 	timeUntilExpiration := expirationTime.Sub(time.Now()).Round(0)
 	log.Debugf("%s until expiration, refresh threshold is %s", timeUntilExpiration, diff)
@@ -179,7 +180,7 @@ func writeCredentialsFile(credentials *creds.AwsCredentials, profile, filename s
 	credentialsINI.Section(profile).Key("aws_access_key_id").SetValue(credentials.AccessKeyId)
 	credentialsINI.Section(profile).Key("aws_secret_access_key").SetValue(credentials.SecretAccessKey)
 	credentialsINI.Section(profile).Key("aws_session_token").SetValue(credentials.SessionToken)
-	credentialsINI.Section(profile).Key("expiration").SetValue(credentials.Expiration.Format("2006-01-02T15:04:05Z07:00"))
+	credentialsINI.Section(profile).Key("expiration").SetValue(strconv.FormatInt(credentials.Expiration.Unix(), 10))
 	err = credentialsINI.SaveTo(filename)
 	if err != nil {
 		return err

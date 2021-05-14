@@ -21,8 +21,14 @@ type Error string
 func (e Error) Error() string { return string(e) }
 
 const (
-	NoCredentialsFoundInCache  = Error("no credentials found in cache")
-	NoDefaultRoleSet           = Error("no default role set")
-	CredentialGenerationFailed = Error("credential generation failed")
-	CredentialRetrievalError   = Error("failed to retrieve credentials from broker")
+	NoCredentialsFoundInCache      = Error("no credentials found in cache")
+	NoDefaultRoleSet               = Error("no default role set")
+	BrowserOpenError               = Error("could not launch browser, open link manually")
+	CredentialRetrievalError       = Error("failed to retrieve credentials from broker")
+	InvalidJWT                     = Error("JWT is invalid")
+	InvalidArn                     = Error("requested ARN is invalid")
+	MutualTLSCertNeedsRefreshError = Error("mTLS cert needs to be refreshed")
+	MultipleMatchingRoles          = Error("more than one matching role for search string")
+	NoMatchingRoles                = Error("no matching roles for search string")
+	MalformedRequestError          = Error("malformed request sent to broker")
 )

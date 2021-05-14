@@ -17,7 +17,7 @@
 package cmd
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/netflix/weep/creds"
 	"github.com/spf13/cobra"
@@ -29,22 +29,39 @@ func init() {
 
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List available roles",
+	Short: listShortHelp,
+	Long:  listLongHelp,
 	RunE:  runList,
 }
 
-func runList(cmd *cobra.Command, args []string) error {
-	client, err := creds.GetClient()
+func roleList(all bool) (string, error) {
+	client, err := creds.GetClient(region)
 	if err != nil {
-		return err
+		return "", err
 	}
 	roles, err := client.Roles()
 	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	if all {
+		sb.WriteString("Available Roles\n")
+	} else {
+		sb.WriteString("Available Console Roles\n")
+	}
+	for i := range roles {
+		sb.WriteString("\t")
+		sb.WriteString(roles[i])
+		sb.WriteString("\n")
+	}
+	return sb.String(), nil
+}
+
+func runList(cmd *cobra.Command, args []string) error {
+	roles, err := roleList(showAll)
+	if err != nil {
 		return err
 	}
-	fmt.Println("Roles:")
-	for i := range roles {
-		fmt.Println("  ", roles[i])
-	}
+	cmd.Print(roles)
 	return nil
 }

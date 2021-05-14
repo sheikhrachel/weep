@@ -17,21 +17,23 @@
 package cache
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/netflix/weep/logging"
+
 	"github.com/netflix/weep/creds"
 	"github.com/netflix/weep/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var GlobalCache CredentialCache
+var log = logging.GetLogger()
 
 type CredentialCache struct {
+	sync.RWMutex
 	RoleCredentials map[string]*creds.RefreshableProvider
 	DefaultRole     string
-	mu              sync.RWMutex
 }
 
 func init() {
@@ -46,20 +48,20 @@ func getCacheSlug(role string, assume []string) string {
 	return strings.Join(elements, "/")
 }
 
-func (cc *CredentialCache) Get(role string, assumeChain []string) (*creds.RefreshableProvider, error) {
-	log.WithFields(log.Fields{
-		"role":        role,
-		"assumeChain": assumeChain,
+func (cc *CredentialCache) Get(searchString string, assumeChain []string) (*creds.RefreshableProvider, error) {
+	log.WithFields(logrus.Fields{
+		"searchString": searchString,
+		"assumeChain":  assumeChain,
 	}).Info("retrieving credentials")
-	c, ok := cc.get(getCacheSlug(role, assumeChain))
+	c, ok := cc.get(getCacheSlug(searchString, assumeChain))
 	if ok {
-		log.Debugf("found credentials for %s in cache", role)
+		log.Debugf("found credentials for %s in cache", searchString)
 		return c, nil
 	}
 	return nil, errors.NoCredentialsFoundInCache
 }
 
-func (cc *CredentialCache) GetOrSet(client *creds.Client, role, region string, assumeChain []string) (*creds.RefreshableProvider, error) {
+func (cc *CredentialCache) GetOrSet(client creds.HTTPClient, role, region string, assumeChain []string) (*creds.RefreshableProvider, error) {
 	c, err := cc.Get(role, assumeChain)
 	if err == nil {
 		return c, nil
@@ -74,7 +76,7 @@ func (cc *CredentialCache) GetOrSet(client *creds.Client, role, region string, a
 	return c, nil
 }
 
-func (cc *CredentialCache) SetDefault(client *creds.Client, role, region string, assumeChain []string) error {
+func (cc *CredentialCache) SetDefault(client creds.HTTPClient, role, region string, assumeChain []string) error {
 	_, err := cc.set(client, role, region, assumeChain)
 	if err != nil {
 		return err
@@ -94,20 +96,38 @@ func (cc *CredentialCache) GetDefault() (*creds.RefreshableProvider, error) {
 	return nil, errors.NoCredentialsFoundInCache
 }
 
+func (cc *CredentialCache) DefaultLastUpdated() string {
+	c, err := cc.GetDefault()
+	if err != nil {
+		log.Debugf("cannot get last updated time of default creds: %v", err)
+		return ""
+	}
+	return c.LastRefreshed.UTC().Format("2006-01-02T15:04:05Z")
+}
+
+func (cc *CredentialCache) DefaultArn() string {
+	c, err := cc.GetDefault()
+	if err != nil {
+		log.Debugf("cannot get arn of default creds: %v", err)
+		return ""
+	}
+	return c.RoleArn
+}
+
 func (cc *CredentialCache) get(slug string) (*creds.RefreshableProvider, bool) {
-	cc.mu.RLock()
-	defer cc.mu.RUnlock()
+	cc.RLock()
+	defer cc.RUnlock()
 	c, ok := cc.RoleCredentials[slug]
 	return c, ok
 }
 
-func (cc *CredentialCache) set(client *creds.Client, role, region string, assumeChain []string) (*creds.RefreshableProvider, error) {
+func (cc *CredentialCache) set(client creds.HTTPClient, role, region string, assumeChain []string) (*creds.RefreshableProvider, error) {
 	c, err := creds.NewRefreshableProvider(client, role, region, assumeChain, false)
 	if err != nil {
-		return nil, fmt.Errorf("could not generate creds: %w", err)
+		return nil, err
 	}
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
+	cc.Lock()
+	defer cc.Unlock()
 	cc.RoleCredentials[getCacheSlug(role, assumeChain)] = c
 	return c, nil
 }

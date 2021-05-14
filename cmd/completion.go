@@ -19,15 +19,15 @@ package cmd
 import (
 	"os"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 // completionCmd represents the completion command
 var completionCmd = &cobra.Command{
-	Use:   "completion [bash|zsh|fish|powershell]",
-	Short: "Generate completion script",
-	Long:  `Generate shell completion script for Bash, Zsh, Fish, and Powershell.`,
+	Use:    "completion [bash|zsh|fish|powershell]",
+	Short:  completionShortHelp,
+	Long:   completionLongHelp,
+	Hidden: true,
 }
 
 var bashCompletionCmd = &cobra.Command{
